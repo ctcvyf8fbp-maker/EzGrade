@@ -1,3 +1,4 @@
+
 """Exam generation using the Strategy pattern.
 
 ``DifficultyStrategy`` encapsulates *how* questions of a given difficulty are
@@ -18,6 +19,7 @@ Pipeline of :meth:`ExamGenerator.generate_exam`:
 from __future__ import annotations
 
 import logging
+import os
 import random
 import uuid
 from abc import ABC, abstractmethod
@@ -33,6 +35,10 @@ logger = logging.getLogger(__name__)
 
 MIN_QUESTIONS = 1
 MAX_QUESTIONS = 30
+
+# Language of the generated exam (questions, options, explanations). Override with the
+# EXAM_LANGUAGE environment variable / Streamlit secret, e.g. EXAM_LANGUAGE = "English".
+EXAM_LANGUAGE = os.environ.get("EXAM_LANGUAGE", "").strip() or "Hebrew"
 
 LLMCallable = Callable[..., dict[str, Any]]
 
@@ -73,7 +79,11 @@ class DifficultyStrategy(ABC):
             '- Never use "all of the above" or "none of the above".\n'
             "- The explanation teaches: say why the correct option is right AND why each "
             "distractor is wrong.\n"
-            "- Write in the same language as the topic titles.\n\n"
+            f"- Write the question text, every option and the explanation in {EXAM_LANGUAGE}, "
+            "even if the topic titles are in another language. Keep standard technical terms "
+            "(e.g. Big-O, linked list) in their usual English form where students expect it.\n"
+            "- Every question must test content that appears in the topics/subtopics above; "
+            "do not ask about material outside this syllabus.\n\n"
             'Return JSON of the form {"questions": [ ... ]} where every question has:\n'
             '  "topic_id" (one of the ids above), "question_text" (string),\n'
             f'  "options" (list of exactly {NUM_OPTIONS} distinct strings),\n'
