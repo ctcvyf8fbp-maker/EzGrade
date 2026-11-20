@@ -1,3 +1,4 @@
+
 """Thin, fail-safe wrapper around the Gemini API.
 
 The single public entry point, :func:`ask_gemini_json`, NEVER raises for
@@ -25,6 +26,9 @@ logger = logging.getLogger(__name__)
 DEFAULT_MODEL = "gemini-2.5-flash"
 API_KEY_ENV_VARS = ("GEMINI_API_KEY", "GOOGLE_API_KEY")
 REQUEST_TIMEOUT_MS = 60_000
+
+# Description of the most recent failed Gemini call (None after a success), shown in the UI.
+LAST_ERROR: str | None = None
 
 _CODE_FENCE_RE = re.compile(r"^\s*```(?:json)?\s*(.*?)\s*```\s*$", re.DOTALL | re.IGNORECASE)
 
@@ -99,6 +103,7 @@ def ask_gemini_json(
         logger.info("No Gemini API key configured; using fallback data.")
         return copy.deepcopy(fallback_data)
 
+    global LAST_ERROR
     try:
         raw_text = _call_gemini(prompt + _JSON_INSTRUCTIONS, api_key, model or get_model_name())
         data = json.loads(extract_json_text(raw_text))
@@ -106,14 +111,19 @@ def ask_gemini_json(
             raise ValueError(f"expected a JSON object, got {type(data).__name__}")
 
         if response_model is not None:
-            return response_model.model_validate(data).model_dump(mode="json")
+            result = response_model.model_validate(data).model_dump(mode="json")
+            LAST_ERROR = None
+            return result
 
         missing_keys = set(fallback_data) - set(data)
         if missing_keys:
             raise ValueError(f"response is missing keys: {sorted(missing_keys)}")
+        LAST_ERROR = None
         return data
     except (ValidationError, ValueError) as exc:
+        LAST_ERROR = f"Gemini returned unusable JSON: {exc}"
         logger.warning("Gemini returned unusable JSON (%s); using fallback data.", exc)
     except Exception as exc:  # network errors, quota, auth, missing SDK, ...
+        LAST_ERROR = f"Gemini call failed ({type(exc).__name__}): {exc}"
         logger.warning("Gemini call failed (%s: %s); using fallback data.", type(exc).__name__, exc)
     return copy.deepcopy(fallback_data)
