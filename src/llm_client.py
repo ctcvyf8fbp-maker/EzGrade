@@ -23,7 +23,7 @@ from pydantic import BaseModel, ValidationError
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_MODEL = "gemini-2.5-flash"
+DEFAULT_MODEL = "gemini-3.8-flash"
 API_KEY_ENV_VARS = ("GEMINI_API_KEY", "GOOGLE_API_KEY")
 REQUEST_TIMEOUT_MS = 60_000
 
