@@ -1,3 +1,4 @@
+
 """EzGrade Streamlit UI.  Run with:  streamlit run src/app.py
 
 Flow (a simple state machine driven by ``st.session_state.step``):
@@ -96,9 +97,20 @@ def render_sidebar() -> None:
 def render_upload_step() -> None:
     st.header("1. Upload your syllabus")
     uploaded_file = st.file_uploader("Syllabus file", type=["pdf", "txt", "md"])
-    pasted_text = st.text_area("...or paste the syllabus text", value=SAMPLE_SYLLABUS, height=200)
+    pasted_text = st.text_area(
+        "...or paste the syllabus text", value="", placeholder=SAMPLE_SYLLABUS, height=200
+    )
+
+    if not is_llm_available():
+        st.warning(
+            "⚠️ Offline mode: no GEMINI_API_KEY is set, so the exam will contain generic sample "
+            "questions that are NOT based on your syllabus. Add the key in the app's Secrets."
+        )
 
     if st.button("Extract topics", type="primary"):
+        if not uploaded_file and not pasted_text.strip():
+            st.error("Upload a syllabus file or paste its text first.")
+            return
         try:
             with st.spinner("Extracting topics..."):
                 topics = parse_uploaded_file(uploaded_file) if uploaded_file else parse_syllabus(pasted_text)
@@ -216,6 +228,12 @@ STEP_RENDERERS = (render_upload_step, render_config_step, render_exam_step, rend
 
 def main() -> None:
     st.set_page_config(page_title="EzGrade", page_icon="📝", layout="centered")
+    # Let each paragraph pick its own direction, so Hebrew questions render right-to-left
+    # while English text stays left-to-right.
+    st.markdown(
+        "<style>p, li, label, textarea, h1, h2, h3 {unicode-bidi: plaintext; text-align: start;}</style>",
+        unsafe_allow_html=True,
+    )
     init_state()
     render_sidebar()
     STEP_RENDERERS[st.session_state.step]()
