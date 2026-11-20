@@ -25,7 +25,8 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_MODEL = "gemini-3.8-flash"
 API_KEY_ENV_VARS = ("GEMINI_API_KEY", "GOOGLE_API_KEY")
-REQUEST_TIMEOUT_MS = 60_000
+# Gemini 3 "thinking" models can be slow; the SDK also passes this to the server as its deadline.
+REQUEST_TIMEOUT_MS = 180_000
 
 # Description of the most recent failed Gemini call (None after a success), shown in the UI.
 LAST_ERROR: str | None = None
@@ -65,20 +66,34 @@ def extract_json_text(raw: str) -> str:
     return text
 
 
+def _build_config(types: Any, *, low_thinking: bool) -> Any:
+    kwargs: dict[str, Any] = {"response_mime_type": "application/json"}
+    # Gemini 3 models work best at the default temperature; lower values can make them loop.
+    if low_thinking:
+        # Less internal "thinking" -> much faster answers, which is plenty for quiz questions.
+        kwargs["thinking_config"] = types.ThinkingConfig(thinking_level="low")
+    return types.GenerateContentConfig(**kwargs)
+
+
 def _call_gemini(prompt: str, api_key: str, model: str) -> str:
     # Imported lazily so the app (and tests) work even if the SDK is missing.
     from google import genai
     from google.genai import types
 
     client = genai.Client(api_key=api_key, http_options=types.HttpOptions(timeout=REQUEST_TIMEOUT_MS))
-    response = client.models.generate_content(
-        model=model,
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            response_mime_type="application/json",
-            temperature=0.4,
-        ),
-    )
+    try:
+        config = _build_config(types, low_thinking=True)
+    except Exception:  # older SDK without thinking_level support
+        config = _build_config(types, low_thinking=False)
+    try:
+        response = client.models.generate_content(model=model, contents=prompt, config=config)
+    except Exception as exc:
+        if "thinking" not in str(exc).lower():
+            raise
+        # The model rejected the thinking setting: retry with the defaults.
+        response = client.models.generate_content(
+            model=model, contents=prompt, config=_build_config(types, low_thinking=False)
+        )
     return response.text or ""
 
 
