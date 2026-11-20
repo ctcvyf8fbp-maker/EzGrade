@@ -21,6 +21,7 @@ import streamlit as st  # noqa: E402
 
 from src.generator import MAX_QUESTIONS, MIN_QUESTIONS, ExamGenerator, get_strategy  # noqa: E402
 from src.grader import WEAKNESS_THRESHOLD, grade_exam  # noqa: E402
+from src import llm_client  # noqa: E402
 from src.llm_client import get_model_name, is_llm_available  # noqa: E402
 from src.models import DIFFICULTIES, Exam, ExamResult, ExamSubmission  # noqa: E402
 from src.parser import parse_syllabus  # noqa: E402
@@ -80,7 +81,10 @@ def render_sidebar() -> None:
     with st.sidebar:
         st.title("EzGrade")
         if is_llm_available():
-            st.success(f"Gemini connected ({get_model_name()})")
+            if llm_client.LAST_ERROR:
+                st.error(f"Gemini key is set, but the last call FAILED:\n\n{llm_client.LAST_ERROR}")
+            else:
+                st.success(f"Gemini key set ({get_model_name()})")
         else:
             st.warning("Offline mode: no GEMINI_API_KEY set, using sample data.")
 
@@ -157,6 +161,11 @@ def render_exam_step() -> None:
     st.header(f"3. Practice exam ({exam.difficulty}, {len(exam.questions)} questions)")
     for error in st.session_state.validation_errors:
         st.warning(f"Validation: {error}")
+    if llm_client.LAST_ERROR or any(q.question_text.startswith("[Sample") for q in exam.questions):
+        st.error(
+            "⚠️ These are offline SAMPLE questions, not AI questions about your syllabus.\n\n"
+            f"Reason: {llm_client.LAST_ERROR or 'no Gemini API key'}"
+        )
 
     with st.form("exam_form"):
         for number, question in enumerate(exam.questions, start=1):
